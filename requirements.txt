@@ -1,22 +1,25 @@
-streamlit>=1.28.0
-torch>=2.0.0
-numpy>=1.24.0
-pandas>=2.0.0
-Pillow>=10.0.0
-requests>=2.31.0
+streamlit==1.37.0
+torch==2.1.2
+torchvision==0.16.2
+torchaudio==2.1.2
+tensorflow-cpu==2.14.0
 
-# LangChain core and integrations
-langchain>=0.1.0
-langchain-community>=0.0.10
-langchain-core>=0.1.0
+numpy==1.26.4
+pandas==2.2.2
+Pillow==10.4.0
+opencv-python-headless==4.9.0.80
 
-# Vector and document handling
-faiss-cpu>=1.7.4
-pypdf>=3.17.0
+langchain==0.1.20
+langchain-community==0.0.38
+langchain-core==0.1.52
 
-# NLP and embedding models
-sentence-transformers>=2.2.2
-huggingface-hub>=0.20.0
+faiss-cpu==1.7.4
+pypdf==3.17.0
 
-# Optional: To avoid TensorFlow imports
-transformers>=4.40.2
+sentence-transformers==2.7.0
+transformers==4.40.2
+huggingface-hub==0.23.2
+
+requests==2.31.0
+tqdm==4.66.4
+python-dotenv==1.0.1
