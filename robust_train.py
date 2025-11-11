@@ -5,7 +5,6 @@ from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Dense, GlobalAveragePooling2D, Dropout, BatchNormalization
 from tensorflow.keras.applications import ResNet50V2
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
-from tensorflow.keras.preprocessing import image
 from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping, ReduceLROnPlateau
 from tensorflow.keras.optimizers import Adam
 import json
@@ -22,7 +21,6 @@ IMG_HEIGHT = 224
 IMG_WIDTH = 224
 BATCH_SIZE = 32
 EPOCHS = 40
-CONFIDENCE_THRESHOLD = 0.6  # below this, return Unknown
 
 # Create plots directory
 os.makedirs('plots', exist_ok=True)
@@ -76,8 +74,6 @@ print(f"Epochs: {EPOCHS}")
 # Save class names
 with open('class_names.json', 'w') as f:
     json.dump(class_names, f, indent=2)
-with open('inference_config.json', 'w') as f:
-    json.dump({"confidence_threshold": CONFIDENCE_THRESHOLD}, f, indent=2)
 
 # Build robust ResNet50V2 model with transfer learning
 base_model = ResNet50V2(
@@ -231,9 +227,6 @@ print("\n=== MODEL VALIDATION ===")
 val_predictions = model.predict(val_data, verbose=0)
 val_pred_classes = np.argmax(val_predictions, axis=1)
 val_true_classes = val_data.classes
-val_max_conf = np.max(val_predictions, axis=1)
-val_unknown_flags = val_max_conf < CONFIDENCE_THRESHOLD
-print(f"Unknown (by threshold) count: {val_unknown_flags.sum()} of {len(val_max_conf)} at threshold {CONFIDENCE_THRESHOLD}")
 
 # Calculate per-class accuracy
 from sklearn.metrics import classification_report, confusion_matrix
@@ -246,85 +239,3 @@ if train_val_diff > 0.1:
     print(f"⚠️ WARNING: Potential overfitting detected (train-val diff: {train_val_diff:.3f})")
 else:
     print(f"✅ Good generalization (train-val diff: {train_val_diff:.3f})") 
-
-# Simple single-image inference with Unknown rejection
-def predict_image_with_unknown(img_path: str, threshold: float = CONFIDENCE_THRESHOLD):
-    img = image.load_img(img_path, target_size=(IMG_HEIGHT, IMG_WIDTH))
-    x = image.img_to_array(img)
-    x = x / 255.0
-    x = np.expand_dims(x, axis=0)
-    probs = model.predict(x, verbose=0)[0]
-    max_idx = int(np.argmax(probs))
-    max_conf = float(np.max(probs))
-    if max_conf < threshold:
-        return {"label": "Unknown", "confidence": max_conf}
-    return {"label": class_names[max_idx], "confidence": max_conf}
-
-# Example:
-# result = predict_image_with_unknown('path/to/leaf.jpg')
-# print(result)
-
-# Lightweight pre-filter to reject non-leaf images using green pixel ratio in HSV
-def is_probably_leaf_image(img_path: str,
-                           min_green_ratio: float = 0.15,
-                           hsv_green_range: tuple = (0.20, 0.45),
-                           min_saturation: float = 0.25,
-                           min_value: float = 0.2) -> dict:
-    """Returns a dict with fields: is_leaf (bool), green_ratio (float).
-    Heuristic: an image dominated by leaf-like greens in HSV.
-    """
-    img = image.load_img(img_path, target_size=(IMG_HEIGHT, IMG_WIDTH))
-    x = image.img_to_array(img) / 255.0  # [0,1]
-    # Convert to HSV
-    hsv = tf.image.rgb_to_hsv(tf.convert_to_tensor(x))
-    h = hsv[..., 0].numpy()
-    s = hsv[..., 1].numpy()
-    v = hsv[..., 2].numpy()
-
-    green_mask = (
-        (h >= hsv_green_range[0]) & (h <= hsv_green_range[1]) &
-        (s >= min_saturation) & (v >= min_value)
-    )
-    green_ratio = float(np.mean(green_mask))
-    return {"is_leaf": green_ratio >= min_green_ratio, "green_ratio": green_ratio}
-
-def predict_image_safe(img_path: str,
-                       threshold: float = CONFIDENCE_THRESHOLD,
-                       min_green_ratio: float = 0.15,
-                       min_sharpness: float = 12.0) -> dict:
-    """Pre-filter with leaf heuristic, then classify with Unknown rejection.
-    Returns dict: {label, confidence, green_ratio, sharpness}
-    """
-    leaf_check = is_probably_leaf_image(img_path, min_green_ratio=min_green_ratio)
-    if not leaf_check["is_leaf"]:
-        return {"label": "Not a leaf", "confidence": 0.0, "green_ratio": leaf_check["green_ratio"], "sharpness": 0.0}
-    sharp_check = is_sharp_enough(img_path, min_sharpness=min_sharpness)
-    if not sharp_check["is_sharp"]:
-        return {"label": "Image too blurry", "confidence": 0.0, "green_ratio": leaf_check["green_ratio"], "sharpness": sharp_check["sharpness"]}
-    result = predict_image_with_unknown(img_path, threshold=threshold)
-    result["green_ratio"] = leaf_check["green_ratio"]
-    result["sharpness"] = sharp_check["sharpness"]
-    return result
-
-# Example safe prediction:
-# result = predict_image_safe('path/to/any_image.jpg')
-# print(result)
-
-# Sharpness/blur detector using Sobel gradients (Tenengrad-like score)
-def compute_sharpness_score(img_path: str) -> float:
-    img = image.load_img(img_path, target_size=(IMG_HEIGHT, IMG_WIDTH))
-    x = image.img_to_array(img) / 255.0  # [H,W,3]
-    # Convert to grayscale using standard luminance coefficients
-    gray = 0.2989 * x[..., 0] + 0.5870 * x[..., 1] + 0.1140 * x[..., 2]
-    gray = tf.convert_to_tensor(gray[None, ..., None], dtype=tf.float32)  # [1,H,W,1]
-    sobel = tf.image.sobel_edges(gray)  # [1,H,W,1,2]
-    gx = sobel[..., 0]
-    gy = sobel[..., 1]
-    grad_mag = tf.sqrt(gx * gx + gy * gy)  # [1,H,W,1]
-    # Tenengrad score ~ mean of gradient magnitude squared or magnitude
-    score = tf.reduce_mean(grad_mag * grad_mag)
-    return float(score.numpy())
-
-def is_sharp_enough(img_path: str, min_sharpness: float = 12.0) -> dict:
-    score = compute_sharpness_score(img_path)
-    return {"is_sharp": score >= min_sharpness, "sharpness": score}
