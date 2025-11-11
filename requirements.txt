@@ -1,25 +1,32 @@
 streamlit==1.37.0
-torch==2.1.2
-torchvision==0.16.2
-torchaudio==2.1.2
+
+# Core Deep Learning
+torch==2.6.0
+torchvision==0.21.0
+torchaudio==2.6.0
 tensorflow-cpu==2.14.0
 
+# Data & Image Processing
 numpy==1.26.4
 pandas==2.2.2
 Pillow==10.4.0
 opencv-python-headless==4.9.0.80
 
+# LLM & LangChain
 langchain==0.1.20
 langchain-community==0.0.38
 langchain-core==0.1.52
 
+# Vector DB / Docs
 faiss-cpu==1.7.4
 pypdf==3.17.0
 
+# NLP / Transformers
 sentence-transformers==2.7.0
 transformers==4.40.2
 huggingface-hub==0.23.2
 
+# Utilities
 requests==2.31.0
 tqdm==4.66.4
 python-dotenv==1.0.1
